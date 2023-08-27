@@ -160,7 +160,7 @@ class Run:
         self.placement = placement
         self.game = game
         self.category = category
-        self.vars = vars
+        self.vars = vars # dict {var_id: var_value_id...}
         self.link = link
         '''
         for runner in self.runners:
@@ -363,7 +363,7 @@ def fullInitialization(save_locally):
                     new_runner = Runner(player["id"], player["names"]["international"], None)
                     if runners.add_runner(new_runner):
                         players.append(new_runner.get_id())
-                new_run = Run(run["id"], players, run["times"]["primary_t"], game, run["category"]["data"]["id"])
+                new_run = Run(run["id"], players, run["times"]["primary_t"], game, run["category"]["data"]["id"], run["values"])
                 runs.add_run(new_run)
             offset += 200
             if (runs_data["pagination"]["size"] < 200): break
