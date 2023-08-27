@@ -2,7 +2,9 @@ import requests
 import gspread
 import time
 import json
+import itertools
 
+'''
 # Google sheets setup
 gsheets_creds = 'gsheets_creds.json'
 
@@ -10,7 +12,13 @@ gc = gspread.service_account(filename=gsheets_creds)
 
 sh = gc.open("lsr_test")
 worksheet = sh.worksheet("raw_data")
+'''
 
+'''
+id:      string
+name: string
+
+'''
 class Game:
     def __init__(self, id, name, abbreviation):
         self.id = id
@@ -30,8 +38,8 @@ class Game:
         return {"id": self.id,
                 "name": self.name,
                 "abbreviation": self.abbreviation,
-                "runs": [o.to_dict() for o in self.runs.get_all_runs()],
-                "runners": [o.to_dict() for o in self.runners.get_runners()],
+                "runs": self.runs,
+                "runners": self.runners,
                 "categories": self.categories.get_categories_dict()}
 
     def get_id(self):
@@ -43,6 +51,9 @@ class Game:
     def get_categories(self):
         return self.categories
 
+'''
+games = [Game]
+'''
 class Games:
     def __init__(self):
         self.games = []
@@ -71,6 +82,14 @@ class Games:
         return temp
 
 
+'''
+id: str
+name: str
+game: id (str)
+runs: [id (str)]
+runners = [id (str)]
+vars = [Variable]
+'''
 class Category:
     def __init__(self, id, name, game):
         self.id = id
@@ -95,6 +114,9 @@ class Category:
     def get_game(self):
         return self.game
 
+    def get_vars(self):
+        return self.vars
+
     def to_dict(self):
         return {"id": self.id,
                 "name": self.name,
@@ -102,6 +124,10 @@ class Category:
                 "runners": self.runners,
                 "vars": [o.to_dict() for o in self.vars]}
 
+'''
+game: id (str)
+categories = [Category]
+'''
 class Categories:
     def __init__(self, game):
         self.game = game
@@ -134,6 +160,13 @@ class Categories:
     def get_game(self):
         return self.game
 
+
+"""
+id: str
+name: str
+values: [val_id (str), display_name (str)]
+category: id (str)
+"""
 class Variable:
     def __init__(self, id, name, values, category):
         self.id = id
@@ -147,11 +180,27 @@ class Variable:
     def get_name(self):
         return self.name
 
+    def get_id(self):
+        return self.id
+
+    def get_values(self):
+        return self.values
+
     def to_dict(self):
         return {"id": self.id,
                 "name": self.name,
                 "values": self.values}
 
+'''
+id: str
+runners: [id (str)]
+time: int
+game: id (str)
+category: id (str)
+vars: {var_id: var_value_id}
+link: str
+placement: int
+'''
 class Run:
     def __init__(self, id, runners, time, game, category, vars, link, placement=9999):
         self.id = id
@@ -194,6 +243,10 @@ class Run:
                 "link": self.link,
                 "game": self.game.id}
 
+'''
+game: str
+runs = [Run]
+'''
 class Runs:
     def __init__(self, game="global"):
         self.game = game
@@ -245,6 +298,13 @@ class Runs:
         for run in self.runs:
             temp[run.get_id()] = run.to_dict()
 
+'''
+id: str
+name: str
+color: TODO [NON-URGENT]: Add color from API ()
+points: int
+multi: int
+'''
 class Runner:
     def __init__(self, id, name, color):
         self.id = id
@@ -270,7 +330,9 @@ class Runner:
                 "points": self.points,
                 "multi": self.multi}
 
-
+'''
+not sure if used anymore?
+'''
 class Runners:
     def __init__(self, runners = [], parent="global"):
         self.parent=parent
@@ -303,7 +365,57 @@ class Runners:
             temp[runner.get_id()] = runner.to_dict()
         return temp
 
+'''
+Board is meant to be a completely unique data structure with already set variables
+game: id (str)
+category: id (str)
+vars: {var_id: value_id, var_id2: value_id2...}
+'''
+class Board:
+    def __init__(self, game, category, vars):
+        self.game = game
+        self.category = category
+        self.vars = vars  # {var1_id: value, var2_id: value}
+        self.id = Board.generate_id(self.game, self.category, self.vars)
 
+    def get_id(self):
+        return self.id
+
+    def get_game(self):
+        return self.game
+
+    def get_category(self):
+        return self.category
+
+    def get_vars(self):
+        return self.vars
+
+    def generate_id(game, category, vars):
+        id = f"g_{game}-c_{category}-"
+        for var in vars:
+            for value in var[0]:
+                id += f"var_{var}:{value}-"
+        return id
+
+'''
+boards: [Board]
+'''
+class Boards:
+    def __init__(self):
+        self.boards = []
+
+    def add_board(self, board):
+        if self.get_board(board.get_id()): self.boards.append(id)
+
+    def get_board(self, id):
+        for board in self.boards:
+            if board.get_id() == id: return board
+        return False
+
+
+'''
+Sleep every 0.6s so the request limit doesn't get met (100 /min)
+'''
 def req(str):
     print(str)
     data = requests.get(str).json()
@@ -321,6 +433,9 @@ games = Games()
 runners = Runners()
 runs = Runs()
 
+'''
+Only handles game fetching from a given series at the moment. Also supports saving a backup of the database locally to /backups/games.json
+'''
 def fullInitialization(save_locally):
     # Games data
     games_data = req(f"https://www.speedrun.com/api/v1/series/{series_name}/games?max=200")["data"]
@@ -328,31 +443,36 @@ def fullInitialization(save_locally):
         new_game = Game(game["id"], game["names"]["international"], game["abbreviation"])
         games.add_game(new_game)
         print(f"[ADDED] Game {new_game.get_id()}: {new_game.get_name()}")
-        game_categories = new_game.get_categories()
+
+        # Categories data
         categories_data = req(f"https://www.speedrun.com/api/v1/games/{new_game.get_id()}/categories?embed=variables")["data"]
         for category in categories_data:
-            if category["type"] == "per-level":
+            if category["type"] == "per-level": # Gets rid of ILs
                 continue
             new_category = Category(category["id"], category["name"], new_game)
             print(f"[ADDED] Category {new_category.get_id()}: {new_category.get_name()}")
+
+            # Variables
             for variable in category["variables"]["data"]:
-                if variable["is-subcategory"]:
+                if variable["is-subcategory"]: # Only care about variables that are sub-categories (TODO: store other ones for later usage?)
                     values = []
-                    for value in variable["values"]["values"].keys():
-                        values.append((value, variable["values"]["values"][value]["label"])) # Var added as a tuple (id, name)
+
+                    # Iterate through every variable_id
+                    for id in variable["values"]["values"].keys():
+                        values.append((id, variable["values"]["values"][id]["label"])) # Var added as a tuple (id, name)
                     var = Variable(variable["id"], variable["name"], values, new_category) # Variable(str, str, [(id, name)], Category)
                     new_category.add_var(var)
                     print(f"[ADDED] Variable {var.get_name()} to the category {new_category.get_name()}")
             new_game.add_category(new_category)
     print(games)
     if save_locally:
-        f = open("backups/games.json", "w")
-        f.write(json.dumps(games.get_games_dict(), indent=4))
-        f.close()
+        with open("backups/games.json", "w+") as f:
+            f.write(json.dumps(games.get_games_dict(), indent=4))
 
+    '''
     # Runs data
     offset = 0
-    for game in games:
+    for game in games.get_games():
         runs_data = req(f"https://www.speedrun.com/api/v1/runs?game={game.get_id()}&max=200&offset={offset}&status=verified&embed=players")
         while True:
             runs_data = runs_data["data"]
@@ -368,6 +488,45 @@ def fullInitialization(save_locally):
             offset += 200
             if (runs_data["pagination"]["size"] < 200): break
     print(len(runs))
+'''
+
+def leaderboards_test():
+    offset = 0
+    for game in games.get_games():
+        for category in game.get_categories().get_categories():
+
+            # Initialize a temporary directory for the board variables & values
+            temp = {}
+
+            # Iterate through every variable in the given category
+            for variable in category.get_vars():
+                temp[variable.get_id()] = [] # Initialize and empty array for the given variable to store possible values to
+
+                # Iterate through all values and add them to the array
+                for value in variable.get_values():
+                    temp[variable.get_id()].append(value)
+
+            # Transform the values of the dictionary to a list
+            temp_list = list(temp.values())
+
+            # Find all possible combinations in order to create every single board with the variables (subcategories)
+            new_boards = itertools.product(*temp_list)
+
+            # Create boards by iterating through the generated unique combinations of subcategories, index is used to get the variable_id from temp
+            for index, board in enumerate(new_boards):
+                #new_board = Board(game.get_id(), category.get_id(), board)
+                print("\n")
+                vars = {}
+                board = list(board)
+                for value in board:
+                    if len(temp) == 0: continue
+                    vars[list(temp)[index]] = value[0]
+                board = Board(game.get_id(), category.get_id(), vars)
+                print(f"Game: {games.get_game('id', game.get_id()).get_name()}, Category: {game.get_categories().get_category('id', (category.get_id())).get_name()}, Vars: {vars}")
+                print()
+
+
+        #runs_data = req(f"https://www.speedrun.com/api/v1/leaderboar")
 
 def test():
     offset = 0
@@ -384,12 +543,15 @@ def test():
                     new_runner = Runner(player["id"], player["names"]["international"], None)
                     if runners.add_runner(new_runner):
                         players.append(new_runner.get_id())
-                new_run = Run(run["id"], players, run["times"]["primary_t"],)
+                new_run = Run(run["id"], players, run["times"]["primary_t"], )
                 runs.add_run(new_run)
             offset += 200
             if (runs_data["pagination"]["size"] < 200): break
     print(len(runs.get_all_runs()))
 
+'''
+TODO: Fix variables and categories (not saving everything at it's current state?)
+'''
 def loadLocalGames():
     with open("backups/games.json") as json_file:
         data = json.load(json_file)
@@ -429,10 +591,10 @@ def updateRunners(save_locally):
 '''
 
 def main():
-    #fullInitialization(True)
-    loadLocalGames()
+    fullInitialization(True)
+    #loadLocalGames()
     #print(games.get_game("name", "The Elder Scrolls Online").get_id())
-    test()
+    leaderboards_test()
 
 
 if __name__ == "__main__":
