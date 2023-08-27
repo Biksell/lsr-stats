@@ -16,8 +16,8 @@ class Game:
         self.id = id
         self.name = name
         self.abbreviation = abbreviation
-        self.runs = Runs(self)
-        self.runners = Runners(self)
+        self.runs = []
+        self.runners = []
         self.categories = Categories(self)
 
     def __str___(self):
@@ -153,19 +153,18 @@ class Variable:
                 "values": self.values}
 
 class Run:
-    def __init__(self, id, runners, time, placement, category, vars, link):
+    def __init__(self, id, runners, time, game, category, vars, link, placement=9999):
         self.id = id
-        self.runners = runners
+        self.runners = runners # [id]
         self.time = time
         self.placement = placement
+        self.game = game
         self.category = category
         self.vars = vars
         self.link = link
         '''
         for runner in self.runners:
             runner.runs.append(self)'''
-        self.game = self.category.game
-        self.game.get_runs().add_run(self)
 
     def __str___(self):
         return f"{self.game}, {self.category} ({self.vars}) in {self.time} by {self.runners}"
@@ -187,7 +186,7 @@ class Run:
 
     def to_dict(self):
         return {"id": self.id,
-                "runners": [o.to_dict() for o in self.runners],
+                "runners": self.runners,
                 "time": self.time,
                 "placement": self.placement,
                 "category": self.category.to_dict(),
@@ -273,12 +272,16 @@ class Runner:
 
 
 class Runners:
-    def __init__(self, game="global"):
-        self.game=game
+    def __init__(self, runners = [], parent="global"):
+        self.parent=parent
         self.runners = []
 
     def add_runner(self, runner):
-        self.runners.append(runner)
+        if self.get_runner("id", runner.get_id()):
+            self.runners.append(runner)
+            return True
+        else:
+            return False
 
     def get_runner(self, field, term):
         for runner in self.runners:
@@ -289,6 +292,7 @@ class Runners:
                 case "runner_name":
                     if runner.get_name() == term:
                         return runner
+        return False
 
     def get_runners(self):
         return self.runners
@@ -314,8 +318,11 @@ for game in games_data:
         games_data.remove(game)
 
 games = Games()
+runners = Runners()
+runs = Runs()
 
-def updateGames(save_locally):
+def fullInitialization(save_locally):
+    # Games data
     games_data = req(f"https://www.speedrun.com/api/v1/series/{series_name}/games?max=200")["data"]
     for game in games_data:
         new_game = Game(game["id"], game["names"]["international"], game["abbreviation"])
@@ -343,6 +350,46 @@ def updateGames(save_locally):
         f.write(json.dumps(games.get_games_dict(), indent=4))
         f.close()
 
+    # Runs data
+    offset = 0
+    for game in games:
+        runs_data = req(f"https://www.speedrun.com/api/v1/runs?game={game.get_id()}&max=200&offset={offset}&status=verified&embed=players")
+        while True:
+            runs_data = runs_data["data"]
+            for run in runs_data:
+                players = []
+                for player in run["players"]:
+                    if player["rel"] != "user": continue
+                    new_runner = Runner(player["id"], player["names"]["international"], None)
+                    if runners.add_runner(new_runner):
+                        players.append(new_runner.get_id())
+                new_run = Run(run["id"], players, run["times"]["primary_t"], game, run["category"]["data"]["id"])
+                runs.add_run(new_run)
+            offset += 200
+            if (runs_data["pagination"]["size"] < 200): break
+    print(len(runs))
+
+def test():
+    offset = 0
+    for game in games.get_games():
+        runs_data = req(f"https://www.speedrun.com/api/v1/runs?game={game.get_id()}&max=200&offset={offset}&status=verified&embed=players")
+        #print(runs_data)
+        while True:
+            runs_data = runs_data["data"]
+            for run in runs_data:
+                players = []
+                for player in run["players"]["data"]:
+                    print(player)
+                    if player["rel"] != "user": continue
+                    new_runner = Runner(player["id"], player["names"]["international"], None)
+                    if runners.add_runner(new_runner):
+                        players.append(new_runner.get_id())
+                new_run = Run(run["id"], players, run["times"]["primary_t"],)
+                runs.add_run(new_run)
+            offset += 200
+            if (runs_data["pagination"]["size"] < 200): break
+    print(len(runs.get_all_runs()))
+
 def loadLocalGames():
     with open("backups/games.json") as json_file:
         data = json.load(json_file)
@@ -355,6 +402,7 @@ def loadLocalGames():
                     var = Variable(variable["id"], variable["name"], variable["values"], new_category)
                     new_category.add_var(var)
             new_game.add_category(new_category)
+
 
 
 '''
@@ -381,9 +429,10 @@ def updateRunners(save_locally):
 '''
 
 def main():
-    updateGames(True)
+    #fullInitialization(True)
     loadLocalGames()
     #print(games.get_game("name", "The Elder Scrolls Online").get_id())
+    test()
 
 
 if __name__ == "__main__":
