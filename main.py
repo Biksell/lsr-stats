@@ -493,10 +493,11 @@ def fullInitialization(save_locally):
 def leaderboards_test():
     offset = 0
     for game in games.get_games():
+        print(game.get_name())
         for category in game.get_categories().get_categories():
-
+            if category.get_id() != "9d8xz4q2": continue
             # Initialize a temporary directory for the board variables & values
-            temp = {}
+            temp = {} # {var_id: [(var_val_id, var_val_name)), var_value2], var_id2: [var_value]}
 
             # Iterate through every variable in the given category
             for variable in category.get_vars():
@@ -506,21 +507,24 @@ def leaderboards_test():
                 for value in variable.get_values():
                     temp[variable.get_id()].append(value)
 
+            print(temp)
+
             # Transform the values of the dictionary to a list
             temp_list = list(temp.values())
 
             # Find all possible combinations in order to create every single board with the variables (subcategories)
             new_boards = itertools.product(*temp_list)
+            #print(f"{list(new_boards)}, {len(temp)}")
 
             # Create boards by iterating through the generated unique combinations of subcategories, index is used to get the variable_id from temp
-            for index, board in enumerate(new_boards):
+            for board in new_boards:
                 #new_board = Board(game.get_id(), category.get_id(), board)
-                print("\n")
+                print(board)
                 vars = {}
                 board = list(board)
-                for value in board:
+                for index, value in enumerate(board):
                     if len(temp) == 0: continue
-                    vars[list(temp)[index]] = value[0]
+                    vars[list(temp.keys())[index]] = value[0]
                 board = Board(game.get_id(), category.get_id(), vars)
                 print(f"Game: {games.get_game('id', game.get_id()).get_name()}, Category: {game.get_categories().get_category('id', (category.get_id())).get_name()}, Vars: {vars}")
                 print()
