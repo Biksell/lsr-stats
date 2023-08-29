@@ -238,10 +238,10 @@ class Run:
                 "runners": self.runners,
                 "time": self.time,
                 "placement": self.placement,
-                "category": self.category.to_dict(),
-                "vars": [o.to_dict() for o in self.vars],
+                "category": self.category,
+                "vars": self.vars,
                 "link": self.link,
-                "game": self.game.id}
+                "game": self.game}
 
 '''
 game: str
@@ -356,6 +356,7 @@ class Runners:
                         return runner
         return False
 
+
     def get_runners(self):
         return self.runners
 
@@ -405,12 +406,15 @@ class Boards:
         self.boards = []
 
     def add_board(self, board):
-        if self.get_board(board.get_id()): self.boards.append(id)
+        if self.get_board(board.get_id()) == False: self.boards.append(board)
 
     def get_board(self, id):
         for board in self.boards:
             if board.get_id() == id: return board
         return False
+
+    def get_boards(self):
+        return self.boards
 
 
 '''
@@ -432,6 +436,7 @@ for game in games_data:
 games = Games()
 runners = Runners()
 runs = Runs()
+boards = Boards()
 
 '''
 Only handles game fetching from a given series at the moment. Also supports saving a backup of the database locally to /backups/games.json
@@ -489,7 +494,14 @@ def fullInitialization(save_locally):
             if (runs_data["pagination"]["size"] < 200): break
     print(len(runs))
 '''
-
+# Skyrim: n4d7jzd7
+# AMQ:  9d8xz4q2
+# var1: 38djkk18
+#   val1: 5lemepz1
+#   val2: 0q5g2dnl
+# var2: jlzgodyn
+#   val1: 81wjjpvq
+#   val2: zqoggpx1
 def leaderboards_test():
     offset = 0
     for game in games.get_games():
@@ -526,8 +538,32 @@ def leaderboards_test():
                     if len(temp) == 0: continue
                     vars[list(temp.keys())[index]] = value[0]
                 board = Board(game.get_id(), category.get_id(), vars)
+                boards.add_board(board)
                 print(f"Game: {games.get_game('id', game.get_id()).get_name()}, Category: {game.get_categories().get_category('id', (category.get_id())).get_name()}, Vars: {vars}")
-                print()
+
+    for board in boards.get_boards():
+        vars_str = ""
+        for var_id, value_id in board.get_vars().items():
+            vars_str += f"var-{var_id}={value_id}&"
+        b_game = games.get_game("id", board.get_game())
+        board_runs_data = req(f"https://www.speedrun.com/api/v1/leaderboards/{b_game.get_id()}/category/{board.get_category()}?{vars_str}&embed=players")["data"]
+        print("tääl")
+        board_players = board_runs_data["players"]["data"]
+        for run_data in board_runs_data["runs"]:
+            players = []
+            for player_data in run_data["run"]["players"]:
+                if player_data["rel"] != "user": continue
+                new_runner = runners.get_runner("id", player_data["id"])
+                if not new_runner:
+                    name = ""
+                    for player in board_players:
+                        if player["id"] == player_data["id"]: name = player["names"]["international"]
+                    new_runner = Runner(player_data["id"], name, None)
+                runners.add_runner(new_runner)
+                players.append(new_runner.get_id())
+            new_run = Run(run_data["run"]["id"], players, run_data["run"]["times"], board.get_game(), board.get_category(), board.get_vars(), run_data["run"]["weblink"], run_data["place"])
+            runs.add_run(new_run)
+            print(new_run.to_dict())
 
 
         #runs_data = req(f"https://www.speedrun.com/api/v1/leaderboar")
