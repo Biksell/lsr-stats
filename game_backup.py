@@ -25,7 +25,7 @@ total_runs = []
 def init():
     for game_id in game_ids:
         offset = 0
-        verified_str = "&status=verified"
+        verified_str = ""
         runs = req(f"https://www.speedrun.com/api/v1/runs?game={game_id}&offset={offset}&max=200{verified_str}&orderby=verify-date&direction=desc")
         if runs["pagination"]["size"] < 200:
             runs = req(f"https://www.speedrun.com/api/v1/runs?game={game_id}&offset={offset}&max=200{verified_str}&orderby=verify-date&direction=desc")

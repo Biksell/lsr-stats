@@ -3,6 +3,8 @@ import gspread
 import time
 import json
 import itertools
+import math
+import statistics
 
 '''
 # Google sheets setup
@@ -34,6 +36,12 @@ class Game:
     def add_category(self, category):
         self.categories.add_category(category)
 
+    def add_run(self, run):
+        if run not in self.runs: self.runs.append(run)
+
+    def add_runner(self, runner):
+        if runner not in self.runners: self.runners.append(runner)
+
     def to_dict(self):
         return {"id": self.id,
                 "name": self.name,
@@ -41,6 +49,11 @@ class Game:
                 "runs": self.runs,
                 "runners": self.runners,
                 "categories": self.categories.get_categories_dict()}
+
+    def get_weight(self):
+        if len(self.runners) == 0:
+            return False
+        return math.log(len(self.runners), 10) * 100
 
     def get_id(self):
         return self.id
@@ -202,14 +215,12 @@ link: str
 placement: int
 '''
 class Run:
-    def __init__(self, id, runners, time, game, category, vars, link, placement=9999):
+    def __init__(self, id, runners, time, board, link, placement=9999):
         self.id = id
         self.runners = runners # [id]
         self.time = time
         self.placement = placement
-        self.game = game
-        self.category = category
-        self.vars = vars # dict {var_id: var_value_id...}
+        self.board = board
         self.link = link
         '''
         for runner in self.runners:
@@ -227,11 +238,21 @@ class Run:
     def get_category(self):
         return self.category
 
-    def get_game(self):
-        return self.game
+    def get_board(self):
+        return self.board
 
     def get_placement(self):
         return self.placement
+
+    def get_time(self):
+        return self.time
+
+    def get_weight(self):
+        return math.sqrt(len(boards.get_board(self.board).get_runs()) / (self.placement) + 0.05 * len(boards.get_board(self.board).get_runs()))
+
+    def get_total_score(self):
+        # TODO FIX "(str).get_weight()"
+        return games.get_game("id", boards.get_board(self.board).get_game()).get_weight() * boards.get_board(self.board).get_weight() * self.get_weight() * 100
 
     def to_dict(self):
         return {"id": self.id,
@@ -274,7 +295,7 @@ class Runs:
                         if runner.get_name() == term:
                             runs.append(run)
                 case "category_id":
-                    if run.get_category().get_id() == term:
+                    if run.get_category() == term:
                         runs.append(run)
                 case "category_name":
                     if run.get_category().get_name() == term:
@@ -316,11 +337,21 @@ class Runner:
     def __str__(self):
         return self.name
 
+    def add_points(self, value):
+        self.points += value
+        self.multi *= 0.9
+
     def get_id(self):
         return self.id
 
     def get_name(self):
         return self.name
+
+    def get_points(self):
+        return self.points
+
+    def get_multi(self):
+        return self.multi
 
     def to_dict(self):
         return {"id": self.id,
@@ -339,7 +370,7 @@ class Runners:
         self.runners = []
 
     def add_runner(self, runner):
-        if self.get_runner("id", runner.get_id()):
+        if not self.get_runner("id", runner.get_id()):
             self.runners.append(runner)
             return True
         else:
@@ -348,14 +379,16 @@ class Runners:
     def get_runner(self, field, term):
         for runner in self.runners:
             match field:
-                case "runner_id":
+                case "id":
                     if runner.get_id() == term:
                         return runner
-                case "runner_name":
+                case "name":
                     if runner.get_name() == term:
                         return runner
         return False
 
+    def sort_runners(self):
+        self.runners.sort(key=lambda x: x.get_points(), reverse = True)
 
     def get_runners(self):
         return self.runners
@@ -376,8 +409,13 @@ class Board:
     def __init__(self, game, category, vars):
         self.game = game
         self.category = category
+        self.runs = []
         self.vars = vars  # {var1_id: value, var2_id: value}
         self.id = Board.generate_id(self.game, self.category, self.vars)
+
+    def add_run(self, run):
+        if run not in self.get_runs():
+            self.runs.append(run)
 
     def get_id(self):
         return self.id
@@ -385,11 +423,18 @@ class Board:
     def get_game(self):
         return self.game
 
+    def get_runs(self):
+        return self.runs
+
     def get_category(self):
         return self.category
 
     def get_vars(self):
         return self.vars
+
+    def get_weight(self):
+        if len(self.runs) == 0: return False
+        return math.log(statistics.median([run.get_time() for run in self.runs]), 3600)
 
     def generate_id(game, category, vars):
         id = f"g_{game}-c_{category}-"
@@ -426,7 +471,7 @@ def req(str):
     time.sleep(0.6)
     return data
 
-series_name = "the_elder_scrolls"
+series_name = "lego"
 games_data = []
 ignored_games = []
 for game in games_data:
@@ -503,11 +548,10 @@ def fullInitialization(save_locally):
 #   val1: 81wjjpvq
 #   val2: zqoggpx1
 def leaderboards_test():
-    offset = 0
     for game in games.get_games():
         print(game.get_name())
         for category in game.get_categories().get_categories():
-            if category.get_id() != "9d8xz4q2": continue
+            # if category.get_id() != "9d8xz4q2": continue
             # Initialize a temporary directory for the board variables & values
             temp = {} # {var_id: [(var_val_id, var_val_name)), var_value2], var_id2: [var_value]}
 
@@ -519,7 +563,7 @@ def leaderboards_test():
                 for value in variable.get_values():
                     temp[variable.get_id()].append(value)
 
-            print(temp)
+            #print(temp)
 
             # Transform the values of the dictionary to a list
             temp_list = list(temp.values())
@@ -537,8 +581,8 @@ def leaderboards_test():
                 for index, value in enumerate(board):
                     if len(temp) == 0: continue
                     vars[list(temp.keys())[index]] = value[0]
-                board = Board(game.get_id(), category.get_id(), vars)
-                boards.add_board(board)
+                new_board = Board(game.get_id(), category.get_id(), vars)
+                boards.add_board(new_board)
                 print(f"Game: {games.get_game('id', game.get_id()).get_name()}, Category: {game.get_categories().get_category('id', (category.get_id())).get_name()}, Vars: {vars}")
 
     for board in boards.get_boards():
@@ -546,8 +590,7 @@ def leaderboards_test():
         for var_id, value_id in board.get_vars().items():
             vars_str += f"var-{var_id}={value_id}&"
         b_game = games.get_game("id", board.get_game())
-        board_runs_data = req(f"https://www.speedrun.com/api/v1/leaderboards/{b_game.get_id()}/category/{board.get_category()}?{vars_str}&embed=players")["data"]
-        print("tääl")
+        board_runs_data = req(f"https://www.speedrun.com/api/v1/leaderboards/{b_game.get_id()}/category/{board.get_category()}?{vars_str}embed=players")["data"]
         board_players = board_runs_data["players"]["data"]
         for run_data in board_runs_data["runs"]:
             players = []
@@ -557,14 +600,39 @@ def leaderboards_test():
                 if not new_runner:
                     name = ""
                     for player in board_players:
-                        if player["id"] == player_data["id"]: name = player["names"]["international"]
+                        if player["rel"] != "user": continue
+                        if player["id"] == player_data["id"]:
+                            name = player["names"]["international"]
+                            break
                     new_runner = Runner(player_data["id"], name, None)
-                runners.add_runner(new_runner)
+                    runners.add_runner(new_runner)
+                    b_game.add_runner(new_runner.get_id())
                 players.append(new_runner.get_id())
-            new_run = Run(run_data["run"]["id"], players, run_data["run"]["times"], board.get_game(), board.get_category(), board.get_vars(), run_data["run"]["weblink"], run_data["place"])
+            new_run = Run(run_data["run"]["id"], players, run_data["run"]["times"]["primary_t"], board.get_id(), run_data["run"]["weblink"], run_data["place"])
+            b_game.add_run(new_run)
             runs.add_run(new_run)
-            print(new_run.to_dict())
+            for player in players:
+                runners.get_runner("id", player).add_points(new_run.get_total_score() * runners.get_runner("id", player).multi * (1 / len(players)))
+            board.add_run(new_run)
+            #print(new_run.get_total_score())
+            #print(new_run.to_dict())
+            #print(f"{board.get_weight()}, {b_game.get_weight()}")
+    runners.sort_runners()
 
+    with open("data.txt", "w+") as f:
+        f.write(f"Boards: ({len(boards.get_boards())}) \n")
+        for board in boards.get_boards():
+            f.write(f"{board.get_category()}, {board.get_runs()}, {board.get_game()}, {board.get_vars()}")
+        f.write(f"Runners: ({len(runners.get_runners())} \n")
+        for runner in runners.get_runners():
+            print(f"{runner.get_name()}: {runner.points}")
+            f.write(f"{runner.get_name()}: {runner.points}\n")
+        f.write(f"Games: \n ({len(games.get_games())}")
+        for game in games.get_games():
+            f.write(f"{game.get_id()}, {game.get_name()}")
+        f.write(f"Runs: \n ({len(runs.get_runs())}")
+        for run in runs.get_all_runs():
+            f.write(f"{games.get_game(run.get_board())}, {run.get_runners()}, {run.get_time()}, {run.get_points()}")
 
         #runs_data = req(f"https://www.speedrun.com/api/v1/leaderboar")
 
